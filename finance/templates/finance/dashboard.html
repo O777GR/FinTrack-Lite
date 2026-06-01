@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">📊 Финансовый дашборд</h2>
+
+<!-- KPI карточки -->
+<div class="row mb-4">
+    <div class="col-md-3 col-6 mb-3">
+        <div class="card text-white bg-primary h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">💰 Баланс</h5>
+                <h3>{{ kpi.balance|floatformat:0 }} ₽</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-3">
+        <div class="card text-white bg-success h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">📥 Доходы</h5>
+                <h3>{{ kpi.income|floatformat:0 }} ₽</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-3">
+        <div class="card text-white bg-danger h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">📤 Расходы</h5>
+                <h3>{{ kpi.expense|floatformat:0 }} ₽</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6 mb-3">
+        <div class="card text-white bg-info h-100">
+            <div class="card-body text-center">
+                <h5 class="card-title">📊 Ср. в месяц</h5>
+                <h3>{{ kpi.avg|floatformat:0 }} ₽</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Кнопки -->
+<div class="row mb-3">
+    <div class="col-12">
+        <a href="{% url 'finance:import' %}" class="btn btn-primary me-2">📥 Загрузить CSV/PDF</a>
+        <a href="{% url 'finance:transactions' %}" class="btn btn-outline-secondary">📋 Все транзакции</a>
+    </div>
+</div>
+
+<!-- Графики -->
+{% if charts %}
+<div class="row">
+    {% for ch in charts %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">{{ ch.title }}</div>
+            <div class="card-body">
+                <div style="position:relative;height:300px">
+                    <canvas id="{{ ch.chart_id }}"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info mt-3">
+    <h5>📭 Пока нет данных для графиков</h5>
+    <p>Загрузите выписку из банка.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📊 Инициализация графиков...');
+    
+    {% for ch in charts %}
+    (function() {
+        const canvas = document.getElementById('{{ ch.chart_id }}');
+        if (!canvas) {
+            console.error('Canvas not found: {{ ch.chart_id }}');
+            return;
+        }
+        
+        try {
+            const ctx = canvas.getContext('2d');
+            // Используем JSON.parse для правильного преобразования
+            const chartData = JSON.parse('{{ ch.data_json|escapejs }}');
+            new Chart(ctx, chartData);
+            console.log('✅ График создан: {{ ch.chart_id }}');
+        } catch (error) {
+            console.error('❌ Ошибка графика {{ ch.chart_id }}:', error);
+        }
+    })();
+    {% empty %}
+    console.log('⚠️ Нет данных для графиков');
+    {% endfor %}
+    
+    console.log('✅ Инициализация завершена');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+/* FinTrack Lite: кастомные стили */
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.08) !important;
+}
+.progress {
+    background-color: #e9ecef;
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+.table th {
+    font-weight: 500;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+.text-success, .text-danger, .text-primary, .text-info {
+    font-variant-numeric: tabular-nums;
+}

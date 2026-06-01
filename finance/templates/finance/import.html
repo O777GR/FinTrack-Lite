@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white"><h4 class="mb-0">📥 Загрузка выписки</h4></div>
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data">{% csrf_token %}
+                    <div class="mb-3">{{ form.csv_file.label_tag }}{{ form.csv_file }}<div class="form-text">{{ form.csv_file.help_text }}</div></div>
+                    <div class="alert alert-info small">
+                        <strong>Требования:</strong> Формат CSV или PDF (СберБанк). Разделитель `;`. Кодировка UTF-8/Windows-1251.
+                    </div>
+                    <button type="submit" class="btn btn-success btn-lg">🔄 Загрузить</button>
+                    <a href="{% url 'finance:dashboard' %}" class="btn btn-outline-secondary btn-lg">← Назад</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

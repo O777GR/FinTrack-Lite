@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"> История операций</h5>
+        <a href="{% url 'finance:import' %}" class="btn btn-sm btn-outline-primary"> Импорт</a>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 mb-3">
+            <div class="col-md-3"><select name="type" class="form-select"><option value="">Все типы</option><option value="income" {% if request.GET.type == 'income' %}selected{% endif %}>Доходы</option><option value="expense" {% if request.GET.type == 'expense' %}selected{% endif %}>Расходы</option></select></div>
+            <div class="col-md-3"><select name="category" class="form-select"><option value="">Все категории</option>{% for c in categories %}<option value="{{ c.id }}" {% if request.GET.category|add:'0' == c.id %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+            <div class="col-md-6"><button type="submit" class="btn btn-primary w-100">🔍 Применить</button></div>
+        </form>
+        {% if transactions %}
+        <div class="table-responsive">
+            <table class="table table-hover"><thead><tr><th>Дата</th><th>Категория</th><th>Описание</th><th class="text-end">Сумма</th></tr></thead>
+            <tbody>{% for tx in transactions %}
+            <tr><td>{{ tx.date|date:"d.m.Y" }}</td><td>{{ tx.category|default:"—" }}</td><td>{{ tx.description|default:"—"|truncatechars:40 }}</td>
+            <td class="text-end fw-bold text-{% if tx.is_income %}success{% else %}danger{% endif %}">{% if tx.is_income %}+{% else %}−{% endif %}{{ tx.amount|floatformat:2 }} ₽</td></tr>
+            {% endfor %}</tbody></table>
+        </div>
+        {% else %}<div class="text-center py-4 text-muted"> Транзакций нет</div>{% endif %}
+    </div>
+</div>
+{% endblock %}

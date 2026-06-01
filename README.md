@@ -1,0 +1,169 @@
+# 💰 FinTrack Lite
+
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-4.2+-green.svg)](https://www.djangoproject.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**FinTrack Lite** — персональный финансовый трекер с автоматическим импортом выписок из Сбербанка (PDF/CSV) и наглядной аналитикой.
+
+![Dashboard Preview](docs/dashboard.png)
+
+---
+
+## ✨ Возможности
+
+### ✅ Реализовано
+
+- 🔐 Авторизация через Django Admin
+- 📥 **Импорт выписок**:
+  - 📄 Парсинг PDF-выписок Сбербанка (распознаёт доходы/расходы, имена, магазины)
+  - 📊 Импорт CSV из Тинькофф, Сбербанка и других банков
+- 📈 **Дашборд**:
+  - 💰 Баланс, доходы, расходы, среднее за месяц
+  - 📊 Графики: доходы/расходы по месяцам, структура расходов по категориям
+- 📋 **История операций**:
+  - Фильтрация по дате, категории, типу
+  - Пагинация (50 записей на страницу)
+- 🏷️ **Категории**:
+  - Автоматическое распределение (еда, транспорт, здоровье и др.)
+  - Цветовая индикация
+- 🛡️ **Безопасность**:
+  - Изоляция данных пользователей
+  - Валидация входных данных
+
+### 🚧 В разработке
+
+- [ ] 📅 Бюджеты: установка лимитов по категориям с уведомлениями
+- [ ] 🎯 Финансовые цели: отслеживание прогресса накоплений
+- [ ] 🔁 Регулярные платежи: авто-распознавание подписок
+- [ ] 💱 Мультивалютность: поддержка разных валют
+- [ ] 📤 Экспорт отчётов: PDF/Excel выгрузки
+- [ ] 📱 Мобильная адаптация: улучшение UX для телефонов
+
+### 💡 Идеи на будущее
+
+- [ ] 🔔 Уведомления о крупных тратах
+- [ ] 🤖 Прогнозирование расходов на основе истории
+- [ ] 👥 Семейный доступ: общий бюджет для нескольких пользователей
+- [ ] 🔄 Синхронизация с облаком
+
+---
+
+## 🚀 Быстрый старт
+
+### Требования
+
+- Python 3.10+
+- pip
+- (Опционально) virtualenv
+
+### Установка
+
+1. **Клонируйте репозиторий:**
+
+git clone https://github.com/O777GR/FinTrack-Lite.git
+cd FinTrack-Lite
+
+2. **Создайте виртуальное окружение:**
+
+### Windows
+python -m venv .venv
+.venv\Scripts\activate
+
+### Linux/Mac
+python3 -m venv .venv
+source .venv/bin/activate
+
+3. **Установите зависимости:**
+
+### Windows
+pip install -r requirements.txt
+
+4. **Примените миграции:**
+
+### Windows
+python manage.py migrate
+
+5. **Создайте суперпользователя:**
+
+### Windows
+python manage.py createsuperuser
+
+6. **Запустите сервер разработки:**
+
+### Windows
+python manage.py runserver 8080
+
+7. **Откройте в браузере:**
+
+### Windows
+Приложение: http://127.0.0.1:8080/finance/
+Админка: http://127.0.0.1:8080/admin/
+
+
+## 📁 Структура проекта
+
+FinTrack-Lite/
+├── core/                   # Настройки Django
+│   ├── settings.py         # Конфигурация проекта
+│   ├── urls.py             # Маршрутизация
+│   └── wsgi.py             # WSGI-конфиг
+├── finance/                # Основное приложение
+│   ├── models.py           # Модели: Transaction, Category, Budget
+│   ├── views.py            # Логика представлений
+│   ├── forms.py            # Формы ввода
+│   ├── utils.py            # Утилиты импорта
+│   ├── charts.py           # Генерация графиков
+│   └── sberbank_pdf_parser.py  # Парсер PDF Сбера
+├── templates/              # HTML-шаблоны
+│   ├── base.html           # Базовый шаблон
+│   └── finance/            # Шаблоны приложения
+│       ├── dashboard.html  # Дашборд
+│       ├── import.html     # Страница импорта
+│       └── transactions.html # Список операций
+├── static/                 # CSS, JS, изображения
+├── media/                  # Загруженные файлы
+├── manage.py               # Утилита Django
+├── requirements.txt        # Зависимости
+├── .gitignore              # Исключения для Git
+└── README.md               # Этот файл
+
+## 🛠️ Технологии
+
+Компонент                        Технология
+Бэкенд                           Python 3.10+, Django 4.2
+База данных                      SQLite (разработка), PostgreSQL (продакшн)
+Парсинг                          pdfplumber, pandas, regex
+Визуализация                     Chart.js 4.x
+Фронтенд                         Bootstrap 5.3, HTML5, CSS3
+Тестирование                     pytest, pytest-django
+
+## 🔧 Настройка окружения (опционально)
+
+Для продакшена создайте файл .env:
+SECRET_KEY=your-secret-key-here
+DEBUG=False
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+DATABASE_URL=postgresql://user:pass@localhost:5432/fintrack
+
+## 🧪 Тестирование
+
+# Запуск тестов
+pytest
+
+# С покрытием
+pytest --cov=finance
+
+# Линтинг
+flake8 finance/
+
+### 🤝 Вклад в проект
+
+Форкните репозиторий
+Создайте ветку для фичи (git checkout -b feature/amazing-feature)
+Закоммитьте изменения (git commit -m 'Add amazing feature')
+Запушьте ветку (git push origin feature/amazing-feature)
+Откройте Pull Request
+
+### 📄 Лицензия
+Распространяется под лицензией MIT.
