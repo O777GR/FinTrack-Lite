@@ -100,34 +100,6 @@ python manage.py runserver 8080
 Приложение: http://127.0.0.1:8080/finance/
 Админка: http://127.0.0.1:8080/admin/
 
-
-## 📁 Структура проекта
-
-FinTrack-Lite/
-├── core/                   # Настройки Django
-│   ├── settings.py         # Конфигурация проекта
-│   ├── urls.py             # Маршрутизация
-│   └── wsgi.py             # WSGI-конфиг
-├── finance/                # Основное приложение
-│   ├── models.py           # Модели: Transaction, Category, Budget
-│   ├── views.py            # Логика представлений
-│   ├── forms.py            # Формы ввода
-│   ├── utils.py            # Утилиты импорта
-│   ├── charts.py           # Генерация графиков
-│   └── sberbank_pdf_parser.py  # Парсер PDF Сбера
-├── templates/              # HTML-шаблоны
-│   ├── base.html           # Базовый шаблон
-│   └── finance/            # Шаблоны приложения
-│       ├── dashboard.html  # Дашборд
-│       ├── import.html     # Страница импорта
-│       └── transactions.html # Список операций
-├── static/                 # CSS, JS, изображения
-├── media/                  # Загруженные файлы
-├── manage.py               # Утилита Django
-├── requirements.txt        # Зависимости
-├── .gitignore              # Исключения для Git
-└── README.md               # Этот файл
-
 ## 🛠️ Технологии
 
 Компонент                        Технология
