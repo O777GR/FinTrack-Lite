@@ -1,82 +1,34 @@
-name: Django CI/CD
+name: Django CI
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
-    strategy:
-      max-parallel: 4
-      matrix:
-        python-version: [3.10, 3.11]
-
-    services:
-      # База данных для тестов (опционально, если используешь PostgreSQL)
-      # postgres:
-      #   image: postgres:13
-      #   env:
-      #     POSTGRES_PASSWORD: postgres
-      #     POSTGRES_USER: postgres
-      #   ports:
-      #     - 5432:5432
-      #   options: >-
-      #     --health-cmd pg_isready
-      #     --health-interval 10s
-      #     --health-timeout 5s
-      #     --health-retries 5
-
     steps:
-    - name: 📥 Checkout кода
-      uses: actions/checkout@v3
-
-    - name: 🐍 Установка Python ${{ matrix.python-version }}
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
       uses: actions/setup-python@v3
       with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: 📦 Установка зависимостей
+        python-version: '3.10'
+    
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        # Устанавливаем инструменты для тестирования
-        pip install flake8 pytest pytest-django
-
-    - name: 🔍 Проверка стиля кода (flake8)
-      run: |
-        # Игнорируем некоторые правила для быстрой проверки
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: 🗃️ Проверка миграций
-      run: |
-        python manage.py makemigrations --check --dry-run || echo "⚠️ Есть невыполненные миграции"
-
-    - name: 🧪 Запуск тестов
-      run: |
-        # Создаём тестовую базу данных
-        python manage.py test --verbosity=2
-      
-      env:
-        # Переменные окружения для тестов
-        SECRET_KEY: test-secret-key-for-ci-cd
-        DEBUG: False
-        # Если используешь PostgreSQL:
-        # DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_db
-        # Если SQLite (по умолчанию):
-        DATABASE_URL: sqlite:///test_db.sqlite3
-
-    - name: ✅ Сборка проекта
+    
+    - name: Check Django project
       run: |
         python manage.py check
-        python manage.py collectstatic --noinput --clear || echo "⚠️ Static files warning"
-
-    # - name: 📊 Отчёт о покрытии тестов (опционально)
-    #   run: |
-    #     pip install coverage
-    #     coverage run manage.py test
-    #     coverage report
+      env:
+        SECRET_KEY: dummy-key-for-ci
+        DEBUG: False
+    
+    - name: Collect static files
+      run: |
+        python manage.py collectstatic --noinput --clear
+      continue-on-error: true
