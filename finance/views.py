@@ -6,10 +6,12 @@ import pandas as pd
 import json
 import os, tempfile
 from decimal import Decimal
+from collections import defaultdict
 from .models import Transaction, Category, Budget
 from .forms import CSVImportForm, TransactionForm
 from .charts import Chart
 from .utils import import_bank_csv, import_bank_csv_from_df, CSVImportError
+from .forecast import generate_forecast_report, get_forecast_chart_data
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -22,6 +24,54 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+def group_transactions_by_description(transactions):
+    """Группирует транзакции по описанию и считает агрегаты."""
+    groups = defaultdict(lambda: {
+        'transactions': [],
+        'category': None,
+        'total_income': 0.0,
+        'total_expense': 0.0,
+        'first_date': None,
+        'last_date': None,
+    })
+    
+    for tx in transactions:
+        key = tx.description or '—'
+        group = groups[key]
+        
+        group['transactions'].append(tx)
+        if group['category'] is None:
+            group['category'] = tx.category
+        
+        amount = float(tx.amount)
+        if tx.is_income:
+            group['total_income'] += amount
+        else:
+            group['total_expense'] += amount
+        
+        if group['last_date'] is None:
+            group['last_date'] = tx.date
+        group['first_date'] = tx.date
+    
+    result = []
+    for description, data in groups.items():
+        result.append({
+            'description': description,
+            'category': data['category'],
+            'transactions': data['transactions'],
+            'count': len(data['transactions']),
+            'total_income': data['total_income'],
+            'total_expense': data['total_expense'],
+            'total_net': data['total_income'] - data['total_expense'],
+            'is_income': data['total_income'] >= data['total_expense'],
+            'first_date': data['first_date'],
+            'last_date': data['last_date'],
+        })
+    
+    result.sort(key=lambda x: x['last_date'], reverse=True)
+    return result
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'finance/dashboard.html'
     
@@ -29,7 +79,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         user = self.request.user
         
-        # Получаем все транзакции
         qs = Transaction.objects.filter(user=user).select_related('category')
         
         if qs.exists():
@@ -38,11 +87,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 'category__name', 'category__color', 'description'
             )))
             
-            # Преобразуем даты
             df['date'] = pd.to_datetime(df['date'])
             df['month'] = df['date'].dt.to_period('M').astype(str)
             
-            # Рассчитываем KPI
             income = float(df[df['transaction_type']=='income']['amount'].sum())
             expense = float(df[df['transaction_type']=='expense']['amount'].sum())
             months = df['month'].nunique() or 1
@@ -54,10 +101,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 'avg': round(expense / months, 2),
             }
             
-            # Генерируем графики
             charts = []
             
-            # 1. График доходов/расходов по месяцам
             monthly_data = df.groupby(['month', 'transaction_type'])['amount'].sum().unstack(fill_value=0)
             if not monthly_data.empty:
                 chart = Chart('bar', 'monthly_flow')
@@ -84,7 +129,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                     'chart_id': chart.chart_id
                 })
             
-            # 2. График по категориям
             expense_df = df[df['transaction_type']=='expense']
             if not expense_df.empty:
                 cat_data = expense_df.groupby('category__name')['amount'].sum().sort_values(ascending=False)
@@ -106,11 +150,28 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                     'chart_id': chart.chart_id
                 })
             
+            forecast_report = generate_forecast_report(qs)
+            context['forecast'] = forecast_report
+            
+            if forecast_report['total_forecast'] > 0:
+                forecast_chart_data = get_forecast_chart_data(forecast_report)
+                forecast_chart = Chart('bar', 'forecast_chart')
+                forecast_config = forecast_chart.to_json_config(
+                    forecast_chart_data, 
+                    '🤖 Прогноз расходов на следующий месяц'
+                )
+                charts.append({
+                    'html': f'<canvas id="{forecast_chart.chart_id}"></canvas>',
+                    'data_json': json.dumps(forecast_config, cls=DecimalEncoder),
+                    'title': 'Прогноз расходов',
+                    'chart_id': forecast_chart.chart_id
+                })
+            
             context['charts'] = charts
-            print(f"DEBUG: Сгенерировано {len(charts)} графиков")
         else:
             context['kpi'] = {'balance': 0, 'income': 0, 'expense': 0, 'avg': 0}
             context['charts'] = []
+            context['forecast'] = {'total_forecast': 0.0, 'categories': []}
         
         context['transaction_form'] = TransactionForm(user=user)
         return context
@@ -144,18 +205,87 @@ class CSVImportView(LoginRequiredMixin, FormView):
 
 
 class TransactionsListView(LoginRequiredMixin, ListView):
+    """Список транзакций с фильтрацией и группировкой."""
     model = Transaction
     template_name = 'finance/transactions.html'
     context_object_name = 'transactions'
     paginate_by = 50
     
     def get_queryset(self):
-        qs = super().get_queryset().filter(user=self.request.user)
-        if c := self.request.GET.get('category'): qs = qs.filter(category_id=c)
-        if t := self.request.GET.get('type'): qs = qs.filter(transaction_type=t)
-        return qs.select_related('category').order_by('-date')
+        print("="*60)
+        print("DEBUG TransactionsListView: get_queryset")
+        print("="*60)
+        
+        user = self.request.user
+        print(f"DEBUG: Пользователь: {user.username} (ID: {user.id})")
+        
+        # 🔧 Получаем ВСЕ транзакции пользователя
+        qs = Transaction.objects.filter(user=user)
+        total = qs.count()
+        print(f"DEBUG: Всего транзакций в БД для этого пользователя: {total}")
+        
+        # Применяем фильтры
+        if category := self.request.GET.get('category'):
+            print(f"DEBUG: Фильтр по категории: {category}")
+            qs = qs.filter(category_id=category)
+        
+        if tx_type := self.request.GET.get('type'):
+            print(f"DEBUG: Фильтр по типу: {tx_type}")
+            qs = qs.filter(transaction_type=tx_type)
+        
+        if date_from := self.request.GET.get('date_from'):
+            print(f"DEBUG: Фильтр с даты: {date_from}")
+            qs = qs.filter(date__gte=date_from)
+        
+        if date_to := self.request.GET.get('date_to'):
+            print(f"DEBUG: Фильтр по дату: {date_to}")
+            qs = qs.filter(date__lte=date_to)
+        
+        final_count = qs.count()
+        print(f"DEBUG: После фильтров осталось: {final_count} транзакций")
+        
+        # Сортируем и добавляем select_related
+        qs = qs.select_related('category').order_by('-date')
+        
+        print("="*60)
+        return qs
     
     def get_context_data(self, **kwargs):
+        print("DEBUG TransactionsListView: get_context_data")
+        
         ctx = super().get_context_data(**kwargs)
-        ctx['categories'] = Category.objects.filter(user=self.request.user, is_active=True)
+        
+        # Категории
+        ctx['categories'] = Category.objects.filter(
+            user=self.request.user, is_active=True
+        )
+        print(f"DEBUG: Категорий: {ctx['categories'].count()}")
+        
+        # Текущие фильтры
+        ctx['current_filters'] = {
+            'category': self.request.GET.get('category', ''),
+            'type': self.request.GET.get('type', ''),
+            'date_from': self.request.GET.get('date_from', ''),
+            'date_to': self.request.GET.get('date_to', ''),
+        }
+        
+        # Режим группировки
+        ctx['group_by_desc'] = self.request.GET.get('group_by') == '1'
+        print(f"DEBUG: Группировка: {ctx['group_by_desc']}")
+        
+        # Транзакции
+        transactions = ctx['transactions']
+        print(f"DEBUG: Транзакций в контексте: {len(transactions)}")
+        
+        if transactions:
+            print(f"DEBUG: Первая транзакция: {transactions[0]}")
+        
+        # Группировка если включена
+        if ctx['group_by_desc']:
+            current_qs = self.get_queryset()
+            grouped = group_transactions_by_description(list(current_qs))
+            ctx['grouped_transactions'] = grouped
+            print(f"DEBUG: Сгруппировано в {len(grouped)} групп")
+        
+        print("="*60)
         return ctx

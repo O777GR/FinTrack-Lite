@@ -24,7 +24,7 @@
     <div class="col-md-3 col-6 mb-3">
         <div class="card text-white bg-danger h-100">
             <div class="card-body text-center">
-                <h5 class="card-title">📤 Расходы</h5>
+                <h5 class="card-title"> Расходы</h5>
                 <h3>{{ kpi.expense|floatformat:0 }} ₽</h3>
             </div>
         </div>
@@ -46,6 +46,99 @@
         <a href="{% url 'finance:transactions' %}" class="btn btn-outline-secondary">📋 Все транзакции</a>
     </div>
 </div>
+
+<!-- 🔧 ПРОГНОЗ РАСХОДОВ -->
+{% if forecast and forecast.total_forecast > 0 %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0">🤖 Прогноз расходов на следующий месяц</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="card text-white bg-primary h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title">💰 Общий прогноз</h6>
+                        <h3>{{ forecast.total_forecast|floatformat:0 }} ₽</h3>
+                        <small class="text-white-50">Ожидаемые расходы</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="alert alert-info mb-0">
+                    <h6 class="alert-heading"> Рекомендации</h6>
+                    <ul class="mb-0 small">
+                        {% for cat in forecast.categories|slice:":3" %}
+                            {% if cat.trend == 'increasing' %}
+                                <li>
+                                    <strong>{{ cat.category }}</strong> — расходы растут 
+                                    <span class="badge bg-danger">↑</span>
+                                    (прогноз: {{ cat.forecast|floatformat:0 }} ₽)
+                                </li>
+                            {% elif cat.trend == 'decreasing' %}
+                                <li>
+                                    <strong>{{ cat.category }}</strong> — расходы снижаются 
+                                    <span class="badge bg-success">↓</span>
+                                    (прогноз: {{ cat.forecast|floatformat:0 }} ₽)
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Таблица прогнозов по категориям -->
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th>Категория</th>
+                        <th class="text-end">Прогноз</th>
+                        <th class="text-center">Тренд</th>
+                        <th class="text-center">Уверенность</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in forecast.categories %}
+                    <tr>
+                        <td class="fw-bold">{{ cat.category }}</td>
+                        <td class="text-end">
+                            <strong>{{ cat.forecast|floatformat:0 }} ₽</strong>
+                        </td>
+                        <td class="text-center">
+                            {% if cat.trend == 'increasing' %}
+                                <span class="badge bg-danger">↑ Растёт</span>
+                            {% elif cat.trend == 'decreasing' %}
+                                <span class="badge bg-success">↓ Падает</span>
+                            {% elif cat.trend == 'stable' %}
+                                <span class="badge bg-info">→ Стабильно</span>
+                            {% else %}
+                                <span class="badge bg-secondary">? Мало данных</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if cat.confidence == 'high' %}
+                                <span class="text-success">●●● Высокая</span>
+                            {% elif cat.confidence == 'medium' %}
+                                <span class="text-warning">●●○ Средняя</span>
+                            {% else %}
+                                <span class="text-muted">●○○ Низкая</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="text-muted small mt-2">
+            <i>Прогноз основан на анализе последних 3-6 месяцев. 
+            Обновлено: {{ forecast.generated_at|date:"d.m.Y H:i" }}</i>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Графики -->
 {% if charts %}
@@ -73,7 +166,11 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
+// Регистрируем плагин datalabels глобально
+Chart.register(ChartDataLabels);
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📊 Инициализация графиков...');
     
@@ -87,7 +184,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             const ctx = canvas.getContext('2d');
-            // Используем JSON.parse для правильного преобразования
             const chartData = JSON.parse('{{ ch.data_json|escapejs }}');
             new Chart(ctx, chartData);
             console.log('✅ График создан: {{ ch.chart_id }}');
