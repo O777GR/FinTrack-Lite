@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+
+{% block title %}Привязка транзакций - FinTrack Lite{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">🔗 Привязка транзакций</h2>
+
+<div class="alert alert-info">
+    <strong>Как использовать:</strong>
+    <ol class="mb-0">
+        <li>Транзакции сгруппированы по описанию (одинаковые переводы вместе)</li>
+        <li>Выбери группу или отдельные транзакции (чекбоксы слева)</li>
+        <li>Выбери финансовую цель (вклад, инвестиции и т.д.) и/или счёт</li>
+        <li>Нажми "Привязать" — эти транзакции перестанут считаться расходами</li>
+    </ol>
+</div>
+
+{% if grouped_transactions %}
+<form method="post" class="card shadow-sm">
+    {% csrf_token %}
+    
+    <div class="card-body">
+        <div class="mb-4 p-3 bg-light rounded">
+            <label class="form-label fw-bold"> Привязать к:</label>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted small">Финансовая цель</label>
+                    {{ form.goal }}
+                    <div class="form-text">Переводы на цели (вклады, инвестиции) не будут считаться расходами</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted small"> Счёт</label>
+                    {{ form.account }}
+                    <div class="form-text">Для отслеживания где физически лежат деньги</div>
+                </div>
+            </div>
+            {{ form.transaction_ids }}
+        </div>
+        
+        <div class="alert alert-info">
+            <strong> Подсказка:</strong> Можно выбрать и цель, и счёт одновременно. 
+            Например: "Вклад Сбербанк" (цель) + "Вклад Сбербанк Еженедельный" (счёт).
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0"> Транзакции для привязки ({{ total_unbound }} шт.)</h5>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="expand-all">
+                🔽 Развернуть все
+            </button>
+        </div>
+        
+        <div class="accordion" id="transactionsAccordion">
+            {% for group in grouped_transactions %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading{{ forloop.counter0 }}">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse{{ forloop.counter0 }}"
+                            aria-expanded="false" 
+                            aria-controls="collapse{{ forloop.counter0 }}">
+                        <div class="w-100">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ group.description|truncatechars:80 }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ group.count }} шт.</span>
+                                </div>
+                                <div class="text-end">
+                                    <span class="text-muted small d-block">Общая сумма:</span>
+                                    <strong class="{% if group.is_income %}text-success{% else %}text-danger{% endif %}">
+                                        {{ group.count }} × {% if group.is_income %}+{% else %}−{% endif %}{{ group.total_sum|floatformat:2 }} ₽
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                </h2>
+                <div id="collapse{{ forloop.counter0 }}" 
+                     class="accordion-collapse collapse"
+                     aria-labelledby="heading{{ forloop.counter0 }}"
+                     data-bs-parent="#transactionsAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" 
+                                                   class="form-check-input group-checkbox"
+                                                   data-group="{{ forloop.counter0 }}">
+                                        </th>
+                                        <th>Дата</th>
+                                        <th>Описание</th>
+                                        <th class="text-end">Сумма</th>
+                                        <th>Категория</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tx in group.transactions %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" 
+                                                   name="selected_transactions" 
+                                                   value="{{ tx.id }}"
+                                                   class="form-check-input tx-checkbox"
+                                                   data-group="{{ forloop.counter0 }}">
+                                        </td>
+                                        <td class="text-nowrap">{{ tx.date|date:"d.m.Y" }}</td>
+                                        <td>{{ tx.description|truncatechars:60 }}</td>
+                                        <td class="text-end {% if tx.is_income %}text-success{% else %}text-danger{% endif %}">
+                                            {% if tx.is_income %}+{% else %}−{% endif %}{{ tx.amount|floatformat:2 }} ₽
+                                        </td>
+                                        <td>
+                                            {% if tx.category %}
+                                            <span class="badge bg-secondary">{{ tx.category }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="text-end mt-4">
+            <button type="button" class="btn btn-outline-secondary me-2" id="select-none">
+                ✕ Снять выделение
+            </button>
+            <button type="submit" class="btn btn-primary btn-lg">
+                🔗 Привязать выбранные
+            </button>
+        </div>
+    </div>
+</form>
+
+{% else %}
+<div class="alert alert-success text-center py-5">
+    <h4 class="mb-3">✅ Все транзакции привязаны!</h4>
+    <p class="mb-0">Нет транзакций, требующих привязки к целям или счетам.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Выделение всей группы
+    document.querySelectorAll('.group-checkbox').forEach(groupCb => {
+        groupCb.addEventListener('change', function() {
+            const groupId = this.dataset.group;
+            const isChecked = this.checked;
+            
+            document.querySelectorAll(`.tx-checkbox[data-group="${groupId}"]`).forEach(cb => {
+                cb.checked = isChecked;
+            });
+            
+            updateTransactionIds();
+        });
+    });
+    
+    // Выделение отдельных транзакций
+    document.querySelectorAll('.tx-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const groupId = this.dataset.group;
+            const groupCheckboxes = document.querySelectorAll(`.tx-checkbox[data-group="${groupId}"]`);
+            const groupCheckbox = document.querySelector(`.group-checkbox[data-group="${groupId}"]`);
+            
+            const allChecked = Array.from(groupCheckboxes).every(cb => cb.checked);
+            groupCheckbox.checked = allChecked;
+            
+            updateTransactionIds();
+        });
+    });
+    
+    // Кнопка "Развернуть/Свернуть все"
+    document.getElementById('expand-all').addEventListener('click', function() {
+        const allCollapsed = document.querySelectorAll('.accordion-button:not(.collapsed)');
+        if (allCollapsed.length === 0) {
+            document.querySelectorAll('.accordion-button').forEach(btn => {
+                btn.classList.remove('collapsed');
+                btn.setAttribute('aria-expanded', 'true');
+            });
+            document.querySelectorAll('.accordion-collapse').forEach(collapse => {
+                collapse.classList.add('show');
+            });
+            this.textContent = '🔼 Свернуть все';
+        } else {
+            document.querySelectorAll('.accordion-button').forEach(btn => {
+                btn.classList.add('collapsed');
+                btn.setAttribute('aria-expanded', 'false');
+            });
+            document.querySelectorAll('.accordion-collapse').forEach(collapse => {
+                collapse.classList.remove('show');
+            });
+            this.textContent = '🔽 Развернуть все';
+        }
+    });
+    
+    // Кнопка "Снять выделение"
+    document.getElementById('select-none').addEventListener('click', function() {
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+        });
+        updateTransactionIds();
+    });
+    
+    // Обновление скрытого поля с ID транзакций
+    function updateTransactionIds() {
+        const selected = Array.from(document.querySelectorAll('.tx-checkbox:checked'))
+            .map(cb => cb.value);
+        document.querySelector('[name=transaction_ids]').value = selected.join(',');
+    }
+    
+    updateTransactionIds();
+});
+</script>
+{% endblock %}

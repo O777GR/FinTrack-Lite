@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% block title %}Дашборд - FinTrack Lite{% endblock %}
+
 {% block content %}
 <h2 class="mb-4">📊 Финансовый дашборд</h2>
 
@@ -24,7 +26,7 @@
     <div class="col-md-3 col-6 mb-3">
         <div class="card text-white bg-danger h-100">
             <div class="card-body text-center">
-                <h5 class="card-title"> Расходы</h5>
+                <h5 class="card-title">📤 Расходы</h5>
                 <h3>{{ kpi.expense|floatformat:0 }} ₽</h3>
             </div>
         </div>
@@ -39,15 +41,7 @@
     </div>
 </div>
 
-<!-- Кнопки -->
-<div class="row mb-3">
-    <div class="col-12">
-        <a href="{% url 'finance:import' %}" class="btn btn-primary me-2">📥 Загрузить CSV/PDF</a>
-        <a href="{% url 'finance:transactions' %}" class="btn btn-outline-secondary">📋 Все транзакции</a>
-    </div>
-</div>
-
-<!-- 🔧 ПРОГНОЗ РАСХОДОВ -->
+<!-- ПРОГНОЗ РАСХОДОВ -->
 {% if forecast and forecast.total_forecast > 0 %}
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-warning text-dark">
@@ -66,7 +60,7 @@
             </div>
             <div class="col-md-8">
                 <div class="alert alert-info mb-0">
-                    <h6 class="alert-heading"> Рекомендации</h6>
+                    <h6 class="alert-heading">💡 Рекомендации</h6>
                     <ul class="mb-0 small">
                         {% for cat in forecast.categories|slice:":3" %}
                             {% if cat.trend == 'increasing' %}
@@ -88,7 +82,6 @@
             </div>
         </div>
         
-        <!-- Таблица прогнозов по категориям -->
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead class="table-light">
@@ -157,7 +150,7 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="alert alert-info mt-3">
+<div class="alert alert-info">
     <h5>📭 Пока нет данных для графиков</h5>
     <p>Загрузите выписку из банка.</p>
 </div>
@@ -168,34 +161,23 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
-// Регистрируем плагин datalabels глобально
 Chart.register(ChartDataLabels);
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📊 Инициализация графиков...');
-    
     {% for ch in charts %}
     (function() {
         const canvas = document.getElementById('{{ ch.chart_id }}');
-        if (!canvas) {
-            console.error('Canvas not found: {{ ch.chart_id }}');
-            return;
-        }
+        if (!canvas) return;
         
         try {
             const ctx = canvas.getContext('2d');
             const chartData = JSON.parse('{{ ch.data_json|escapejs }}');
             new Chart(ctx, chartData);
-            console.log('✅ График создан: {{ ch.chart_id }}');
         } catch (error) {
-            console.error('❌ Ошибка графика {{ ch.chart_id }}:', error);
+            console.error('Ошибка графика:', error);
         }
     })();
-    {% empty %}
-    console.log('⚠️ Нет данных для графиков');
     {% endfor %}
-    
-    console.log('✅ Инициализация завершена');
 });
 </script>
 {% endblock %}

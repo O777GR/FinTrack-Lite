@@ -2,15 +2,18 @@ from django.views.generic import TemplateView, FormView, ListView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.urls import reverse_lazy
+from django.shortcuts import redirect
+from django import forms
 import pandas as pd
 import json
 import os, tempfile
 from decimal import Decimal
 from collections import defaultdict
-from .models import Transaction, Category, Budget
+from django.db import models as django_models
+from .models import Transaction, Category, Budget, FinancialGoal, Account
 from .forms import CSVImportForm, TransactionForm
 from .charts import Chart
-from .utils import import_bank_csv, import_bank_csv_from_df, CSVImportError
+from .utils import import_bank_csv, import_bank_csv_from_df
 from .forecast import generate_forecast_report, get_forecast_chart_data
 
 
@@ -84,14 +87,20 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         if qs.exists():
             df = pd.DataFrame(list(qs.values(
                 'id', 'amount', 'transaction_type', 'date',
-                'category__name', 'category__color', 'description'
+                'category__name', 'category__color', 'description', 'goal', 'account'
             )))
             
             df['date'] = pd.to_datetime(df['date'])
             df['month'] = df['date'].dt.to_period('M').astype(str)
             
+            # Исключаем из расходов переводы на цели И на счета
+            expense_qs = df[
+                (df['transaction_type']=='expense') & 
+                (df['goal'].isna()) & 
+                (df['account'].isna())
+            ]
             income = float(df[df['transaction_type']=='income']['amount'].sum())
-            expense = float(df[df['transaction_type']=='expense']['amount'].sum())
+            expense = float(expense_qs['amount'].sum()) if not expense_qs.empty else 0
             months = df['month'].nunique() or 1
             
             context['kpi'] = {
@@ -129,7 +138,11 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                     'chart_id': chart.chart_id
                 })
             
-            expense_df = df[df['transaction_type']=='expense']
+            expense_df = df[
+                (df['transaction_type']=='expense') & 
+                (df['goal'].isna()) & 
+                (df['account'].isna())
+            ]
             if not expense_df.empty:
                 cat_data = expense_df.groupby('category__name')['amount'].sum().sort_values(ascending=False)
                 chart = Chart('doughnut', 'categories_pie')
@@ -205,87 +218,216 @@ class CSVImportView(LoginRequiredMixin, FormView):
 
 
 class TransactionsListView(LoginRequiredMixin, ListView):
-    """Список транзакций с фильтрацией и группировкой."""
     model = Transaction
     template_name = 'finance/transactions.html'
     context_object_name = 'transactions'
     paginate_by = 50
     
     def get_queryset(self):
-        print("="*60)
-        print("DEBUG TransactionsListView: get_queryset")
-        print("="*60)
+        qs = Transaction.objects.filter(user=self.request.user)
         
-        user = self.request.user
-        print(f"DEBUG: Пользователь: {user.username} (ID: {user.id})")
-        
-        # 🔧 Получаем ВСЕ транзакции пользователя
-        qs = Transaction.objects.filter(user=user)
-        total = qs.count()
-        print(f"DEBUG: Всего транзакций в БД для этого пользователя: {total}")
-        
-        # Применяем фильтры
         if category := self.request.GET.get('category'):
-            print(f"DEBUG: Фильтр по категории: {category}")
             qs = qs.filter(category_id=category)
-        
         if tx_type := self.request.GET.get('type'):
-            print(f"DEBUG: Фильтр по типу: {tx_type}")
             qs = qs.filter(transaction_type=tx_type)
-        
         if date_from := self.request.GET.get('date_from'):
-            print(f"DEBUG: Фильтр с даты: {date_from}")
             qs = qs.filter(date__gte=date_from)
-        
         if date_to := self.request.GET.get('date_to'):
-            print(f"DEBUG: Фильтр по дату: {date_to}")
             qs = qs.filter(date__lte=date_to)
         
-        final_count = qs.count()
-        print(f"DEBUG: После фильтров осталось: {final_count} транзакций")
-        
-        # Сортируем и добавляем select_related
-        qs = qs.select_related('category').order_by('-date')
-        
-        print("="*60)
-        return qs
+        return qs.select_related('category').order_by('-date')
     
     def get_context_data(self, **kwargs):
-        print("DEBUG TransactionsListView: get_context_data")
-        
         ctx = super().get_context_data(**kwargs)
-        
-        # Категории
         ctx['categories'] = Category.objects.filter(
             user=self.request.user, is_active=True
         )
-        print(f"DEBUG: Категорий: {ctx['categories'].count()}")
-        
-        # Текущие фильтры
         ctx['current_filters'] = {
             'category': self.request.GET.get('category', ''),
             'type': self.request.GET.get('type', ''),
             'date_from': self.request.GET.get('date_from', ''),
             'date_to': self.request.GET.get('date_to', ''),
         }
-        
-        # Режим группировки
         ctx['group_by_desc'] = self.request.GET.get('group_by') == '1'
-        print(f"DEBUG: Группировка: {ctx['group_by_desc']}")
         
-        # Транзакции
-        transactions = ctx['transactions']
-        print(f"DEBUG: Транзакций в контексте: {len(transactions)}")
-        
-        if transactions:
-            print(f"DEBUG: Первая транзакция: {transactions[0]}")
-        
-        # Группировка если включена
         if ctx['group_by_desc']:
             current_qs = self.get_queryset()
-            grouped = group_transactions_by_description(list(current_qs))
-            ctx['grouped_transactions'] = grouped
-            print(f"DEBUG: Сгруппировано в {len(grouped)} групп")
+            ctx['grouped_transactions'] = group_transactions_by_description(list(current_qs))
         
-        print("="*60)
         return ctx
+
+
+class GoalsView(LoginRequiredMixin, TemplateView):
+    template_name = 'finance/goals.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        
+        goals = FinancialGoal.objects.filter(user=user, is_active=True)
+        
+        for goal in goals:
+            total = Transaction.objects.filter(
+                user=user,
+                goal=goal,
+                transaction_type='expense'
+            ).aggregate(total=django_models.Sum('amount'))['total'] or 0
+            goal.current_amount = total
+            goal.save()
+        
+        goals_with_history = []
+        for goal in goals:
+            history = list(
+                goal.history.values('date', 'amount')
+                .order_by('date')
+            )
+            goals_with_history.append({
+                'goal': goal,
+                'history': history
+            })
+        
+        total_saved = sum(float(g.current_amount) for g in goals)
+        total_target = sum(float(g.target_amount) for g in goals)
+        
+        context['goals'] = goals
+        context['goals_with_history'] = goals_with_history
+        context['total_saved'] = round(total_saved, 2)
+        context['total_target'] = round(total_target, 2)
+        context['total_progress'] = round(total_saved / total_target * 100, 1) if total_target > 0 else 0
+        
+        return context
+
+
+class AccountsView(LoginRequiredMixin, TemplateView):
+    template_name = 'finance/accounts.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        
+        accounts = Account.objects.filter(user=user, is_active=True)
+        
+        accounts_by_type = {}
+        for acc in accounts:
+            acc_type = acc.get_account_type_display()
+            if acc_type not in accounts_by_type:
+                accounts_by_type[acc_type] = []
+            accounts_by_type[acc_type].append(acc)
+        
+        total_assets = sum(float(acc.balance) for acc in accounts)
+        
+        context['accounts'] = accounts
+        context['accounts_by_type'] = accounts_by_type
+        context['total_assets'] = round(total_assets, 2)
+        
+        return context
+
+
+class BindTransactionForm(forms.Form):
+    transaction_ids = forms.CharField(widget=forms.HiddenInput())
+    goal = forms.ModelChoiceField(
+        queryset=FinancialGoal.objects.none(),
+        required=False,
+        label="Финансовая цель"
+    )
+    account = forms.ModelChoiceField(
+        queryset=Account.objects.none(),
+        required=False,
+        label="Счёт"
+    )
+
+
+class BindTransactionsView(LoginRequiredMixin, FormView):
+    template_name = 'finance/bind_transactions.html'
+    form_class = BindTransactionForm
+    success_url = '/finance/bind-transactions/'
+    
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        form.fields['goal'].queryset = FinancialGoal.objects.filter(
+            user=self.request.user, is_active=True
+        )
+        form.fields['account'].queryset = Account.objects.filter(
+            user=self.request.user, is_active=True
+        )
+        return form
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        # Получаем ВСЕ транзакции без цели и без счёта
+        unbound_transactions = list(
+            Transaction.objects.filter(
+                user=self.request.user,
+                goal__isnull=True,
+                account__isnull=True
+            )
+            .select_related('category')
+            .order_by('description', '-date')
+        )
+        
+        # Группируем на стороне Python с правильным подсчётом суммы
+        grouped = defaultdict(lambda: {
+            'transactions': [],
+            'total_sum': 0.0,
+            'count': 0,
+            'is_income': True,
+        })
+        
+        for tx in unbound_transactions:
+            key = tx.description or 'Без описания'
+            group = grouped[key]
+            group['transactions'].append(tx)
+            group['count'] += 1
+            
+            amount = float(tx.amount)
+            if tx.is_income:
+                group['total_sum'] += amount
+            else:
+                group['total_sum'] -= amount
+                group['is_income'] = False
+        
+        # Превращаем в список для шаблона
+        grouped_list = []
+        for description, data in grouped.items():
+            grouped_list.append({
+                'description': description,
+                'transactions': data['transactions'],
+                'total_sum': round(data['total_sum'], 2),
+                'count': data['count'],
+                'is_income': data['is_income'],
+            })
+        
+        # Сортируем по дате последней транзакции (новые сверху)
+        grouped_list.sort(
+            key=lambda x: x['transactions'][0].date if x['transactions'] else None,
+            reverse=True
+        )
+        
+        context['grouped_transactions'] = grouped_list
+        context['total_unbound'] = len(unbound_transactions)
+        return context
+    
+    def form_valid(self, form):
+        transaction_ids = form.cleaned_data['transaction_ids'].split(',')
+        goal = form.cleaned_data.get('goal')
+        account = form.cleaned_data.get('account')
+        
+        updated = 0
+        for tx_id in transaction_ids:
+            try:
+                tx = Transaction.objects.get(
+                    id=int(tx_id),
+                    user=self.request.user
+                )
+                if goal:
+                    tx.goal = goal
+                if account:
+                    tx.account = account
+                tx.save()
+                updated += 1
+            except (Transaction.DoesNotExist, ValueError):
+                pass
+        
+        messages.success(self.request, f"✅ Привязано {updated} транзакций")
+        return super().form_valid(form)
