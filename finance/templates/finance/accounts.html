@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">💳 Счета и активы</h2>
+
+<!-- Общая сумма -->
+<div class="card shadow-sm mb-4 bg-primary text-white">
+    <div class="card-body text-center">
+        <h5 class="card-title">💰 Общая сумма активов</h5>
+        <h2 class="mb-0">{{ total_assets|floatformat:0 }} ₽</h2>
+    </div>
+</div>
+
+<!-- Счета по типам -->
+{% for type_name, accounts_list in accounts_by_type.items %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">{{ type_name }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th class="text-end">Баланс</th>
+                        <th>Описание</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts_list %}
+                    <tr>
+                        <td class="fw-bold">{{ account.name }}</td>
+                        <td class="text-end">
+                            <strong>{{ account.balance|floatformat:2 }} {{ account.currency }}</strong>
+                        </td>
+                        <td class="text-muted">{{ account.description|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="alert alert-info text-center">
+    <h5>💳 Пока нет счетов</h5>
+    <p>Добавь свои счета через админку для отслеживания активов.</p>
+    <a href="/admin/finance/account/add/" class="btn btn-primary mt-2">➕ Добавить счёт</a>
+</div>
+{% endfor %}
+{% endblock %}
